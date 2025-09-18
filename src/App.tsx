@@ -187,6 +187,7 @@ function App() {
       <p className="subtitle">
         From {START_DATE} to {todayString()}
       </p>
+      {error ? <p className="muted">{error}</p> : null}
 
       <div className="grid">
         <div className="card input-card">
@@ -226,10 +227,10 @@ function App() {
               onChange={(e) => setCount(e.target.value)}
             />
           </div>
-          <button className="primary" onClick={addEntry}>
-            Add
+          <button className="primary" onClick={addEntry} disabled={loading}>
+            {loading ? "Saving…" : "Add"}
           </button>
-          <button className="danger" onClick={clearAll}>
+          <button className="danger" onClick={clearAll} disabled={loading}>
             Clear All
           </button>
         </div>

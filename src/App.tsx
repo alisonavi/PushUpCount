@@ -13,6 +13,15 @@ type Entry = {
 
 type ExerciseKey = "pushups" | "abs";
 
+function compareEntriesDesc(a: Entry, b: Entry): number {
+  const byDate = b.date.localeCompare(a.date);
+  if (byDate !== 0) return byDate;
+  const aNum = Number(a.id);
+  const bNum = Number(b.id);
+  if (Number.isFinite(aNum) && Number.isFinite(bNum)) return bNum - aNum;
+  return 0;
+}
+
 const PEOPLE: Record<PersonKey, string> = {
   bekzat: "Bekzat Saulebay",
   batyr: "Batyr Shairbek",
@@ -69,6 +78,7 @@ function App() {
   const [date, setDate] = useState<string>(() => todayString());
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
     saveEntries(getStorageKey(activeTab), entries);
@@ -85,7 +95,8 @@ function App() {
           .select("id, date, person, count")
           .gte("date", START_DATE)
           .lte("date", todayString())
-          .order("date", { ascending: false });
+          .order("date", { ascending: false })
+          .order("id", { ascending: false });
         if (error) throw error;
         if (data) {
           const mapped: Entry[] = data.map((r: any) => ({
@@ -130,6 +141,7 @@ function App() {
   async function addEntry() {
     const n = Number(count);
     if (!Number.isFinite(n) || n <= 0) return;
+    if (n > 300 && !confirm("That looks high. Save it anyway?")) return;
     const d = date || todayString();
     if (d < START_DATE || d > todayString()) return;
     const newEntry: Entry = {
@@ -164,6 +176,81 @@ function App() {
         saved,
         ...prev.filter((e) => e.id !== newEntry.id),
       ]);
+    }
+  }
+
+  async function startEdit(entry: Entry) {
+    setEditingId(entry.id);
+    setPerson(entry.person);
+    setDate(entry.date);
+    setCount(String(entry.count));
+  }
+
+  async function saveEdit() {
+    if (!editingId) return;
+    const n = Number(count);
+    if (!Number.isFinite(n) || n <= 0) return;
+    if (n > 300 && !confirm("That looks high. Save it anyway?")) return;
+    const d = date || todayString();
+    try {
+      setLoading(true);
+      setError("");
+      const { data, error } = await supabase
+        .from(activeTab)
+        .update({ date: d, person, count: Math.floor(n) })
+        .eq("id", editingId)
+        .select("id, date, person, count")
+        .single();
+      if (error) throw error;
+      if (data) {
+        const updated: Entry = {
+          id: String(data.id),
+          date: data.date,
+          person: data.person as PersonKey,
+          count: Number(data.count),
+        };
+        setEntries((prev) =>
+          prev.map((e) => (e.id === editingId ? updated : e))
+        );
+      }
+      setEditingId(null);
+      setCount("");
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to update entry");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function deleteEntry(id: string) {
+    if (!confirm("Delete this entry?")) return;
+    try {
+      setLoading(true);
+      setError("");
+      const prev = entries;
+      setEntries((p) => p.filter((e) => e.id !== id));
+      const { error } = await supabase.from(activeTab).delete().eq("id", id);
+      if (error) throw error;
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to delete entry");
+      // refetch to restore correct state
+      const { data } = await supabase
+        .from(activeTab)
+        .select("id, date, person, count")
+        .gte("date", START_DATE)
+        .lte("date", todayString())
+        .order("date", { ascending: false });
+      if (data) {
+        const mapped: Entry[] = data.map((r: any) => ({
+          id: String(r.id),
+          date: r.date,
+          person: r.person as PersonKey,
+          count: Number(r.count),
+        }));
+        setEntries(mapped);
+      }
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -257,9 +344,15 @@ function App() {
               onChange={(e) => setCount(e.target.value)}
             />
           </div>
-          <button className="primary" onClick={addEntry} disabled={loading}>
-            {loading ? "Saving…" : "Add"}
-          </button>
+          {editingId ? (
+            <button className="primary" onClick={saveEdit} disabled={loading}>
+              {loading ? "Saving…" : "Save"}
+            </button>
+          ) : (
+            <button className="primary" onClick={addEntry} disabled={loading}>
+              {loading ? "Saving…" : "Add"}
+            </button>
+          )}
           <button className="danger" onClick={clearAll} disabled={loading}>
             Clear All
           </button>
@@ -301,6 +394,45 @@ function App() {
                 </div>
               </li>
             ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="card history-card">
+        <h2>Recent Entries</h2>
+        {entries.length === 0 ? (
+          <p className="muted">No entries yet.</p>
+        ) : (
+          <ul className="history-list">
+            {[...entries]
+              .sort(compareEntriesDesc)
+              .slice(0, 15)
+              .map((e) => (
+                <li key={e.id} className="history-item">
+                  <div className="history-date">{e.date}</div>
+                  <div className="history-people">
+                    <span>
+                      {PEOPLE[e.person]}: <strong>{e.count}</strong>
+                    </span>
+                  </div>
+                  <div className="actions">
+                    <button
+                      className="secondary"
+                      onClick={() => startEdit(e)}
+                      disabled={loading}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="danger"
+                      onClick={() => deleteEntry(e.id)}
+                      disabled={loading}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              ))}
           </ul>
         )}
       </div>

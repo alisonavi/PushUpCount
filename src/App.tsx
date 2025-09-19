@@ -11,6 +11,8 @@ type Entry = {
   count: number;
 };
 
+type ExerciseKey = "pushups" | "abs";
+
 const PEOPLE: Record<PersonKey, string> = {
   bekzat: "Bekzat Saulebay",
   batyr: "Batyr Shairbek",
@@ -18,6 +20,10 @@ const PEOPLE: Record<PersonKey, string> = {
 
 const STORAGE_KEY = "pushups-tracker-v1";
 const START_DATE = "2025-09-18";
+
+function getStorageKey(exercise: ExerciseKey): string {
+  return `${STORAGE_KEY}-${exercise}`;
+}
 
 function formatDate(date: Date): string {
   const y = date.getFullYear();
@@ -30,9 +36,9 @@ function todayString(): string {
   return formatDate(new Date());
 }
 
-function loadEntries(): Entry[] {
+function loadEntries(storageKey: string): Entry[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -49,12 +55,15 @@ function loadEntries(): Entry[] {
   }
 }
 
-function saveEntries(entries: Entry[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+function saveEntries(storageKey: string, entries: Entry[]) {
+  localStorage.setItem(storageKey, JSON.stringify(entries));
 }
 
 function App() {
-  const [entries, setEntries] = useState<Entry[]>(() => loadEntries());
+  const [activeTab, setActiveTab] = useState<ExerciseKey>("pushups");
+  const [entries, setEntries] = useState<Entry[]>(() =>
+    loadEntries(getStorageKey("pushups"))
+  );
   const [person, setPerson] = useState<PersonKey>("bekzat");
   const [count, setCount] = useState<string>("");
   const [date, setDate] = useState<string>(() => todayString());
@@ -62,8 +71,8 @@ function App() {
   const [error, setError] = useState<string>("");
 
   useEffect(() => {
-    saveEntries(entries);
-  }, [entries]);
+    saveEntries(getStorageKey(activeTab), entries);
+  }, [entries, activeTab]);
 
   // Fetch from Supabase on mount
   useEffect(() => {
@@ -72,7 +81,7 @@ function App() {
         setLoading(true);
         setError("");
         const { data, error } = await supabase
-          .from("pushups")
+          .from(activeTab)
           .select("id, date, person, count")
           .gte("date", START_DATE)
           .lte("date", todayString())
@@ -93,7 +102,7 @@ function App() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [activeTab]);
 
   const inRangeEntries = useMemo(() => {
     return entries.filter(
@@ -134,7 +143,7 @@ function App() {
 
     // Persist to Supabase (replace optimistic temp id with real id)
     const { data, error } = await supabase
-      .from("pushups")
+      .from(activeTab)
       .insert([{ date: d, person, count: newEntry.count }])
       .select("id, date, person, count")
       .single();
@@ -164,7 +173,7 @@ function App() {
       setLoading(true);
       setError("");
       const { error } = await supabase
-        .from("pushups")
+        .from(activeTab)
         .delete()
         .gte("date", START_DATE)
         .lte("date", todayString());
@@ -183,15 +192,36 @@ function App() {
 
   return (
     <div className="container">
-      <h1>Pushups Tracker</h1>
+      <h1>{activeTab === "pushups" ? "Pushups" : "Abs"} Tracker</h1>
       <p className="subtitle">
         From {START_DATE} to {todayString()}
       </p>
       {error ? <p className="muted">{error}</p> : null}
 
+      <div className="tabs">
+        <button
+          className={`tab${activeTab === "pushups" ? " active" : ""}`}
+          onClick={() => {
+            setActiveTab("pushups");
+          }}
+          disabled={loading}
+        >
+          Pushups
+        </button>
+        <button
+          className={`tab${activeTab === "abs" ? " active" : ""}`}
+          onClick={() => {
+            setActiveTab("abs");
+          }}
+          disabled={loading}
+        >
+          Abs
+        </button>
+      </div>
+
       <div className="grid">
         <div className="card input-card">
-          <h2>Add Pushups</h2>
+          <h2>Add {activeTab === "pushups" ? "Pushups" : "Abs"}</h2>
           <div className="field-row">
             <label className="label">Person</label>
             <select

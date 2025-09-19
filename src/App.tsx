@@ -227,7 +227,6 @@ function App() {
     try {
       setLoading(true);
       setError("");
-      const prev = entries;
       setEntries((p) => p.filter((e) => e.id !== id));
       const { error } = await supabase.from(activeTab).delete().eq("id", id);
       if (error) throw error;
